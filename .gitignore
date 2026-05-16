@@ -1,0 +1,14 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Claude Code
+.claude/
+
+# Logs
+logs/
+*.log
