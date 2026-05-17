@@ -761,3 +761,79 @@ Ecommerce/
 └── tests/                   # Testes de qualidade de dados
 ```
 
+---
+
+## Dia 4: Dashboard Streamlit — Case 1
+
+O dashboard está na pasta `case-01-dashboard/` e consome diretamente os 3 Data Marts da camada Gold do banco PostgreSQL (Supabase). É uma aplicação Streamlit com 3 páginas voltadas para diferentes diretores do e-commerce.
+
+---
+
+### Páginas do Dashboard
+
+| Página | Diretor | Fonte de dados | O que mostra |
+|--------|---------|----------------|-------------|
+| **Vendas** | Comercial | `gold.vendas_temporais` | Receita diária, por dia da semana e por hora |
+| **Clientes** | Customer Success | `gold.clientes_segmentacao` | Segmentação VIP/TOP_TIER/REGULAR, top 10, distribuição por estado |
+| **Pricing** | Pricing | `gold.precos_competitividade` | Posicionamento vs concorrentes (Mercado Livre, Amazon, Shopee, Magalu) |
+
+Cada página exibe **4 KPIs** no topo (em `st.columns`) e múltiplos gráficos Plotly interativos com filtros.
+
+---
+
+### Como Rodar
+
+#### 1. Configurar credenciais
+
+```bash
+cd case-01-dashboard
+cp .env.example .env
+```
+
+Edite o `.env` com as credenciais do seu Supabase:
+
+```
+SUPABASE_HOST=seu-host.supabase.co
+SUPABASE_PORT=5432
+SUPABASE_DB=postgres
+SUPABASE_USER=seu-usuario
+SUPABASE_PASSWORD=sua-senha
+```
+
+> **Pré-requisito:** o pipeline Python (`src/exemplo-03-projeto-completo.py`) e o dbt (`dbt run` em `Ecommerce/`) precisam ter sido executados antes para que as tabelas gold existam no banco.
+
+#### 2. Instalar dependências
+
+```bash
+pip install -r case-01-dashboard/requirements.txt
+```
+
+#### 3. Subir o dashboard
+
+```bash
+streamlit run case-01-dashboard/app.py
+```
+
+O dashboard abre em **http://localhost:8501**.
+
+---
+
+### Estrutura
+
+```
+case-01-dashboard/
+├── app.py            # App Streamlit (3 páginas + conexão + formatação)
+├── requirements.txt  # streamlit, plotly, psycopg2-binary, pandas, python-dotenv
+└── .env.example      # Template de variáveis de ambiente
+```
+
+---
+
+### Decisões de implementação
+
+- **Cache com TTL de 5 min** (`@st.cache_data(ttl=300)`) — os dados ficam em memória entre interações mas expiram após um `dbt run`
+- **Pool de conexão reutilizável** (`@st.cache_resource`) — evita abrir nova conexão a cada clique
+- **Botão "Atualizar dados"** na sidebar — limpa o cache manualmente para forçar releitura imediata do banco
+- **Formatação brasileira** — valores monetários em `R$ 1.234,56` e percentuais com sinal (`+1,23%`)
+- **Tratamento de erros** — falha de conexão exibe `st.error()` com mensagem amigável; filtro sem resultados exibe `st.info()`
+
