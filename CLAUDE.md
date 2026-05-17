@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Educational data engineering project ("Jornada de Dados — Dia 2 & 3") that teaches:
-- **Day 2 (Python):** EL pipeline — extract Parquet files from a Supabase S3-compatible Data Lake and load them into PostgreSQL
-- **Day 3 (dbt):** Medallion architecture transformations (Bronze → Silver → Gold) on top of the raw tables loaded by Python
+Educational data engineering project ("Jornada de Dados") covering the full modern data stack:
+- **Day 2 (Python):** EL pipeline — extract Parquet files from a Supabase S3-compatible Data Lake and load into PostgreSQL
+- **Day 3 (dbt):** Medallion architecture transformations (Bronze → Silver → Gold)
+- **Day 4 (Streamlit):** Analytics dashboard consuming the Gold data marts
 
 **Infrastructure:** Supabase (PostgreSQL + S3-compatible Storage). Credentials live in `.env` (see `.env.example`). A read-only Supabase MCP server is connected via `.mcp.json`.
 
@@ -22,11 +23,14 @@ python -m venv .venv
 .venv\Scripts\activate          # Windows
 source .venv/bin/activate       # Mac/Linux
 
-# Install Python dependencies
+# Install Python/pipeline dependencies
 pip install -r requirements.txt
 
 # Install dbt adapter (not in requirements.txt)
 pip install dbt-postgres
+
+# Install dashboard dependencies
+pip install -r case-01-dashboard/requirements.txt
 ```
 
 Configure `~/.dbt/profiles.yml` for the dbt project:
@@ -86,25 +90,40 @@ dbt docs generate && dbt docs serve   # Browse lineage at http://localhost:8080
 
 ---
 
+## Streamlit Dashboard
+
+```bash
+# Copy and fill credentials
+cp case-01-dashboard/.env.example case-01-dashboard/.env
+
+# Run the dashboard
+streamlit run case-01-dashboard/app.py
+# Opens at http://localhost:8501
+```
+
+The dashboard uses `SUPABASE_*` env vars (host, port, db, user, password) — different from the root `.env` which uses `DATABASE_URL` for the EL pipeline.
+
+---
+
 ## Architecture: Medallion Layers
 
-Raw tables (`public` schema) are loaded by the Python scripts, then dbt transforms them through three layers:
+Raw tables (`public` schema) are loaded by the Python scripts, then dbt transforms them:
 
 | Layer | Materialization | Schema | What it does |
 |-------|----------------|--------|--------------|
 | **Bronze** | VIEW | `bronze` | Pass-through copy of raw tables — no transformations |
 | **Silver** | VIEW | `silver` | Cleans and enriches: adds `faixa_preco`, `receita_total`, temporal dimensions (`ano_venda`, `mes_venda`, `dia_venda`, `hora_venda`), converts timestamps |
-| **Gold** | TABLE | per domain (see below) | Business KPIs ready for consumption |
+| **Gold** | TABLE | `gold` | Business KPIs ready for consumption |
 
 **Gold data marts** (full schemas, columns, business rules, and sample queries are in `app/database.md`):
 
-| Model | Schema | Domain |
-|-------|--------|--------|
-| `vendas_temporais` | `public_gold_sales` | Sales time-series by day/hour |
-| `clientes_segmentacao` | `public_gold_cs` | Customer segmentation: VIP (≥ R$10k), TOP_TIER (≥ R$5k), REGULAR |
-| `precos_competitividade` | `public_gold_pricing` | Price positioning vs. Mercado Livre, Amazon, Shopee, Magalu |
+| Model | Table | Domain |
+|-------|-------|--------|
+| `gold.vendas_temporais` | Sales time-series by day/hour | Granularity: 1 row per `data_venda` + `hora_venda` |
+| `gold.clientes_segmentacao` | Customer segmentation: VIP (≥ R$10k), TOP_TIER (≥ R$5k), REGULAR | Granularity: 1 row per customer |
+| `gold.precos_competitividade` | Price positioning vs. Mercado Livre, Amazon, Shopee, Magalu | Granularity: 1 row per product with competitor data |
 
-**Schema naming:** `Ecommerce/macros/generate_schema_name.sql` overrides dbt's default `{target}_{custom}` pattern to return just the custom schema name as-is, so the layers land in clean schemas (`bronze`, `silver`, etc.) rather than `public_bronze`, `public_silver`.
+**Schema naming:** `Ecommerce/macros/generate_schema_name.sql` overrides dbt's default `{target}_{custom}` pattern to return just the custom schema name as-is, so layers land in `bronze`, `silver`, `gold` — not `public_bronze` etc.
 
 **Lineage:** `silver_vendas` is the hub — it feeds all three Gold models. Cross-domain joins must go through silver tables.
 
@@ -123,8 +142,16 @@ Four source tables in `public` schema (defined in `Ecommerce/models/_sources.yml
 
 ---
 
-## App (Streamlit Dashboard — WIP)
+## Dashboard Architecture (`case-01-dashboard/app.py`)
 
-`app/prd-dashboard.md` contains the full PRD for a 3-page Streamlit dashboard (Vendas / Clientes / Pricing) that reads from the Gold data marts. The app does not exist yet — the PRD is the spec to implement it.
+Three-page Streamlit app. Key patterns used throughout:
 
-Target file: `case-01-dashboard/app.py`. Connect via `psycopg2` using `SUPABASE_*` env vars. Use `plotly` for charts and format numbers in Brazilian Portuguese (R$ with `.` thousands and `,` decimal).
+- **`@st.cache_resource` on `get_connection()`** — reusable psycopg2 connection pool; auto-reconnects on failure
+- **`@st.cache_data(ttl=300)` on `run_query(sql)`** — 5-min query cache; sidebar "Atualizar dados" button calls `run_query.clear()` to force refresh
+- **`fmt_currency(v)`** — returns Brazilian format `R$ 1.234,56`; always use this for monetary values, never raw f-strings
+- Each page function (`show_vendas`, `show_clientes`, `show_pricing`) wraps its `run_query` call in `try/except` and shows `st.error()` on connection failure, `st.info()` on empty results after filtering
+
+Page-to-table mapping:
+- `show_vendas()` → `gold.vendas_temporais` — filter by `mes_venda`; charts: line (daily), bar (weekday order fixed: Segunda→Domingo), bar (hourly)
+- `show_clientes()` → `gold.clientes_segmentacao` — filter by `segmento_cliente` on detail table; `ranking_receita <= 10` for top-10 chart
+- `show_pricing()` → `gold.precos_competitividade` — `st.multiselect` on `categoria` filters all visuals; scatter uses `receita_total` as bubble size; alert table shows only `MAIS_CARO_QUE_TODOS`

@@ -837,3 +837,102 @@ case-01-dashboard/
 - **Formatação brasileira** — valores monetários em `R$ 1.234,56` e percentuais com sinal (`+1,23%`)
 - **Tratamento de erros** — falha de conexão exibe `st.error()` com mensagem amigável; filtro sem resultados exibe `st.info()`
 
+---
+
+## Dia 5: Agente de Dados com Bot Telegram — Case 2
+
+O agente está na pasta `case-02-agente/` e combina Claude (tool use) + Telegram + PostgreSQL para criar um analista de dados conversacional com dois modos de operação.
+
+---
+
+### Dois modos de operação
+
+| Modo | Comando | Precisa do bot rodando? | Uso |
+|------|---------|------------------------|-----|
+| **Interativo** | `python bot.py` | Sim (polling) | Chat livre + relatório sob demanda via `/relatorio` |
+| **Standalone** | `python agente.py` | Não | Gera relatório executivo + envia direto no Telegram via API HTTP |
+
+---
+
+### Funcionalidades
+
+**Chat livre** — qualquer pergunta em português. Claude decide dinamicamente quais queries SQL executar (tool use), consulta os Data Marts gold e responde com dados reais.
+
+**Relatório executivo** — gera automaticamente um relatório Markdown com 3 seções (Comercial / Customer Success / Pricing) a partir de 4 queries fixas nos Data Marts. Salva como `relatorio_YYYY-MM-DD.md` e envia no Telegram.
+
+**Auto-registro de CHAT_ID** — na primeira interação com o bot, o `CHAT_ID` é salvo automaticamente no `.env`, habilitando o modo standalone e agendamento via cron.
+
+---
+
+### Como Rodar
+
+#### 1. Configurar credenciais
+
+```bash
+cd case-02-agente
+cp .env.example .env
+```
+
+Edite o `.env`:
+
+```
+TELEGRAM=token-do-bot-telegram
+POSTGRES_URL=postgresql+psycopg2://usuario:senha@host:porta/banco
+ANTHROPIC_API_KEY=sk-ant-...
+CHAT_ID=           # preenchido automaticamente pelo bot
+```
+
+> `POSTGRES_URL` aceita o mesmo valor de `DATABASE_URL` do `.env` raiz.
+
+#### 2. Instalar dependências
+
+```bash
+pip install -r case-02-agente/requirements.txt
+```
+
+#### 3a. Modo interativo (bot)
+
+```bash
+python case-02-agente/bot.py
+```
+
+Abra o bot no Telegram, envie `/start` — o `CHAT_ID` é registrado automaticamente. Use `/relatorio` para gerar o relatório ou envie qualquer pergunta.
+
+#### 3b. Modo standalone (relatório automático)
+
+```bash
+python case-02-agente/agente.py
+```
+
+Gera o relatório, salva `relatorio_YYYY-MM-DD.md` e envia para o Telegram (se `CHAT_ID` estiver configurado).
+
+#### 3c. Agendamento via cron
+
+```bash
+# Relatório diário às 8h
+0 8 * * * cd /caminho/do/projeto && python case-02-agente/agente.py >> /tmp/agente.log 2>&1
+```
+
+---
+
+### Estrutura
+
+```
+case-02-agente/
+├── db.py            # SQLAlchemy + execute_query() — aceita apenas SELECT/WITH
+├── agente.py        # chat(), gerar_relatorio(), enviar_telegram(), salvar_chat_id()
+├── bot.py           # Bot assíncrono (python-telegram-bot v20+)
+├── requirements.txt # anthropic, python-telegram-bot, sqlalchemy, pandas, tabulate
+└── .env.example     # Template de variáveis
+```
+
+---
+
+### Decisões de implementação
+
+- **Tool use com limite de 10 iterações** — Claude executa queries SQL dinamicamente até ter dados suficientes para responder; o limite evita loops infinitos
+- **Apenas SELECT/WITH permitidos** — validação em `db.py` rejeita qualquer query de escrita antes de chegar ao banco
+- **`asyncio.to_thread()`** — `chat()` e `gerar_relatorio()` são funções síncronas (SDK Anthropic); `to_thread` evita bloquear o event loop assíncrono do bot
+- **Envio Telegram via `urllib`** — sem dependência de `requests`; fallback automático de Markdown para texto puro em caso de erro de parsing
+- **Split automático em 4096 chars** — limite da API do Telegram; split preferencial em `\n` para não quebrar palavras
+
