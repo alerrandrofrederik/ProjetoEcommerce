@@ -647,21 +647,21 @@ graph TB
     S3 --> G3
     R4 --> B4 --> S4 --> G2
 
-    style R1 fill:#95A5A6,color:#fff
-    style R2 fill:#95A5A6,color:#fff
-    style R3 fill:#95A5A6,color:#fff
-    style R4 fill:#95A5A6,color:#fff
-    style B1 fill:#CD7F32,color:#fff
-    style B2 fill:#CD7F32,color:#fff
-    style B3 fill:#CD7F32,color:#fff
-    style B4 fill:#CD7F32,color:#fff
-    style S1 fill:#C0C0C0,color:#000
-    style S2 fill:#C0C0C0,color:#000
-    style S3 fill:#C0C0C0,color:#000
-    style S4 fill:#C0C0C0,color:#000
-    style G1 fill:#FFD700,color:#000
-    style G2 fill:#FFD700,color:#000
-    style G3 fill:#FFD700,color:#000
+    style R1 fill:#6B7280,color:#fff
+    style R2 fill:#6B7280,color:#fff
+    style R3 fill:#6B7280,color:#fff
+    style R4 fill:#6B7280,color:#fff
+    style B1 fill:#B87333,color:#fff
+    style B2 fill:#B87333,color:#fff
+    style B3 fill:#B87333,color:#fff
+    style B4 fill:#B87333,color:#fff
+    style S1 fill:#A8A9AD,color:#fff
+    style S2 fill:#A8A9AD,color:#fff
+    style S3 fill:#A8A9AD,color:#fff
+    style S4 fill:#A8A9AD,color:#fff
+    style G1 fill:#D4AF37,color:#000
+    style G2 fill:#D4AF37,color:#000
+    style G3 fill:#D4AF37,color:#000
 ```
 
 ---
@@ -733,6 +733,12 @@ dbt test
 
 # Compilar sem executar (visualizar o SQL gerado)
 dbt compile
+
+# Gerar documentação (cataloga modelos, fontes, testes e linhagem)
+dbt docs generate
+
+# Visualizar documentação no navegador (abre em http://localhost:8080)
+dbt docs serve
 ```
 
 ---
